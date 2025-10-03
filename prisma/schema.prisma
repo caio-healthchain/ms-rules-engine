@@ -1,0 +1,383 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model BusinessRule {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Identificação
+  name        String   @unique
+  description String
+  category    RuleCategory
+  version     String   @default("1.0.0")
+
+  // Configuração da regra
+  conditions  Json // Condições para aplicar a regra
+  actions     Json // Ações a serem executadas
+  priority    Int  @default(0)
+
+  // Contexto de aplicação
+  entityType  EntityType
+  triggers    Json // Eventos que disparam a regra
+
+  // Status
+  isActive    Boolean @default(true)
+  isPublished Boolean @default(false)
+
+  // Metadados
+  metadata    Json?
+  tags        String[]
+
+  // Relacionamentos
+  executions  RuleExecution[]
+
+  // Índices
+  @@index([category])
+  @@index([entityType])
+  @@index([isActive])
+  @@index([priority])
+  @@map("business_rules")
+}
+
+model RuleExecution {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  // Regra executada
+  ruleId      String
+  rule        BusinessRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  // Contexto da execução
+  entityType  EntityType
+  entityId    String
+  entityData  Json
+
+  // Resultado
+  status      ExecutionStatus
+  result      Json?
+  error       String?
+  duration    Int? // em milissegundos
+
+  // Ações executadas
+  actionsExecuted Json?
+
+  // Contexto do usuário
+  userId      String?
+  sessionId   String?
+
+  // Metadados
+  metadata    Json?
+
+  // Relacionamentos externos
+  patientId   String?
+  procedureId String?
+  billingId   String?
+
+  // Índices
+  @@index([ruleId])
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([patientId])
+  @@index([procedureId])
+  @@index([billingId])
+  @@map("rule_executions")
+}
+
+model WorkflowDefinition {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Identificação
+  name        String   @unique
+  description String
+  category    WorkflowCategory
+  version     String   @default("1.0.0")
+
+  // Definição do workflow (BPMN)
+  bpmnXml     String // XML do processo BPMN
+  diagram     String? // URL do diagrama
+
+  // Configurações
+  isActive    Boolean @default(true)
+  isPublished Boolean @default(false)
+
+  // Metadados
+  metadata    Json?
+  tags        String[]
+
+  // Relacionamentos
+  instances   WorkflowInstance[]
+
+  // Índices
+  @@index([category])
+  @@index([isActive])
+  @@map("workflow_definitions")
+}
+
+model WorkflowInstance {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Workflow
+  workflowId  String
+  workflow    WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  // Instância
+  instanceKey String   @unique // Chave da instância no Camunda
+  status      InstanceStatus
+  
+  // Contexto
+  entityType  EntityType
+  entityId    String
+  variables   Json // Variáveis do processo
+
+  // Execução
+  startedBy   String?
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  duration    Int? // em milissegundos
+
+  // Relacionamentos
+  tasks       WorkflowTask[]
+
+  // Relacionamentos externos
+  patientId   String?
+  procedureId String?
+  billingId   String?
+
+  // Metadados
+  metadata    Json?
+
+  // Índices
+  @@index([workflowId])
+  @@index([instanceKey])
+  @@index([status])
+  @@index([entityType, entityId])
+  @@index([startedAt])
+  @@index([patientId])
+  @@index([procedureId])
+  @@index([billingId])
+  @@map("workflow_instances")
+}
+
+model WorkflowTask {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Instância do workflow
+  instanceId  String
+  instance    WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  // Task
+  taskKey     String   @unique // Chave da task no Camunda
+  taskType    TaskType
+  name        String
+  description String?
+
+  // Status
+  status      TaskStatus
+  priority    TaskPriority @default(MEDIUM)
+
+  // Atribuição
+  assignedTo  String?
+  assignedAt  DateTime?
+  candidateGroups String[]
+
+  // Execução
+  startedAt   DateTime?
+  completedAt DateTime?
+  duration    Int? // em milissegundos
+
+  // Dados
+  variables   Json?
+  formData    Json?
+  result      Json?
+
+  // Datas limite
+  dueDate     DateTime?
+  followUpDate DateTime?
+
+  // Metadados
+  metadata    Json?
+
+  // Índices
+  @@index([instanceId])
+  @@index([taskKey])
+  @@index([status])
+  @@index([assignedTo])
+  @@index([dueDate])
+  @@map("workflow_tasks")
+}
+
+model DecisionTable {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Identificação
+  name        String   @unique
+  description String
+  category    DecisionCategory
+  version     String   @default("1.0.0")
+
+  // Definição da tabela (DMN)
+  dmnXml      String // XML da decisão DMN
+  
+  // Configurações
+  isActive    Boolean @default(true)
+  isPublished Boolean @default(false)
+
+  // Metadados
+  metadata    Json?
+  tags        String[]
+
+  // Relacionamentos
+  evaluations DecisionEvaluation[]
+
+  // Índices
+  @@index([category])
+  @@index([isActive])
+  @@map("decision_tables")
+}
+
+model DecisionEvaluation {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  // Tabela de decisão
+  decisionId  String
+  decision    DecisionTable @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  // Entrada
+  input       Json
+  
+  // Resultado
+  output      Json?
+  status      EvaluationStatus
+  error       String?
+  duration    Int? // em milissegundos
+
+  // Contexto
+  entityType  EntityType?
+  entityId    String?
+  userId      String?
+
+  // Relacionamentos externos
+  patientId   String?
+  procedureId String?
+  billingId   String?
+
+  // Metadados
+  metadata    Json?
+
+  // Índices
+  @@index([decisionId])
+  @@index([status])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([patientId])
+  @@index([procedureId])
+  @@index([billingId])
+  @@map("decision_evaluations")
+}
+
+// Enums
+enum RuleCategory {
+  VALIDATION
+  BUSINESS_LOGIC
+  COMPLIANCE
+  SECURITY
+  PRICING
+  WORKFLOW
+  NOTIFICATION
+}
+
+enum EntityType {
+  PATIENT
+  PROCEDURE
+  BILLING
+  MATERIAL
+  USER
+  SYSTEM
+}
+
+enum ExecutionStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+  TIMEOUT
+}
+
+enum WorkflowCategory {
+  PATIENT_ADMISSION
+  PROCEDURE_APPROVAL
+  BILLING_VALIDATION
+  AUDIT_PROCESS
+  COMPLIANCE_CHECK
+  CUSTOM
+}
+
+enum InstanceStatus {
+  ACTIVE
+  COMPLETED
+  TERMINATED
+  SUSPENDED
+  FAILED
+}
+
+enum TaskType {
+  USER_TASK
+  SERVICE_TASK
+  SCRIPT_TASK
+  BUSINESS_RULE_TASK
+  RECEIVE_TASK
+  MANUAL_TASK
+  SEND_TASK
+}
+
+enum TaskStatus {
+  CREATED
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+  CRITICAL
+}
+
+enum DecisionCategory {
+  BUSINESS_RULE
+  VALIDATION
+  PRICING
+  RISK_ASSESSMENT
+  COMPLIANCE
+  ROUTING
+}
+
+enum EvaluationStatus {
+  SUCCESS
+  FAILED
+  ERROR
+}
+
